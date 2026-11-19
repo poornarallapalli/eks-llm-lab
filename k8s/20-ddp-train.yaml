@@ -1,0 +1,117 @@
+# Multi-node distributed training: 2 pods x 1 GPU each, PyTorch DDP over NCCL.
+# No operator needed: an Indexed Job gives each pod a stable rank (JOB_COMPLETION_INDEX)
+# and a stable DNS name via the headless Service, so rank 0 can be the rendezvous master.
+#
+# Before applying, create the script ConfigMap and set your bucket:
+#   kubectl -n llm create configmap train-script --from-file=training/train_ddp.py
+#   export BUCKET=$(terraform -chdir=terraform output -raw artifacts_bucket)
+#   envsubst '${BUCKET}' < k8s/20-ddp-train.yaml | kubectl apply -f -
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trainer
+  namespace: llm # Terraform created a Pod Identity association for llm/trainer -> S3 role
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ddp
+  namespace: llm
+spec:
+  clusterIP: None # headless: gives each pod a DNS record ddp-train-<i>.ddp.llm.svc
+  publishNotReadyAddresses: true # resolve peers before they're "Ready"
+  selector:
+    job-name: ddp-train
+  ports:
+    - name: rdzv
+      port: 29500
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ddp-train
+  namespace: llm
+spec:
+  completionMode: Indexed
+  completions: 2
+  parallelism: 2
+  backoffLimit: 0 # in DDP, one failed rank = whole job failed; don't retry piecemeal
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      annotations:
+        # Keep NCCL out of the Istio mesh: Envoy would proxy every all-reduce byte and
+        # NCCL opens dynamic ports. Calico NetworkPolicy still governs these pods.
+        sidecar.istio.io/inject: "false"
+    spec:
+      subdomain: ddp # must match the headless Service name
+      serviceAccountName: trainer
+      restartPolicy: Never
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        workload: llm
+      # Force the two ranks onto different nodes so you exercise real cross-node NCCL
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  job-name: ddp-train
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: trainer
+          image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --quiet "transformers==4.46.3" "datasets==3.1.0" boto3
+              torchrun \
+                --nnodes=2 \
+                --nproc_per_node=1 \
+                --node_rank=${JOB_COMPLETION_INDEX} \
+                --master_addr=ddp-train-0.ddp \
+                --master_port=29500 \
+                /scripts/train_ddp.py
+          env:
+            - name: MODEL_ID
+              value: Qwen/Qwen2.5-0.5B
+            - name: MAX_STEPS
+              value: "200"
+            - name: S3_BUCKET
+              value: ${BUCKET}
+            - name: S3_PREFIX
+              value: models/qwen2.5-0.5b-dolly
+            - name: HF_HOME
+              value: /cache
+            - name: NCCL_DEBUG
+              value: INFO # look for "NET/Socket" vs "NET/OFI" (EFA) in the logs
+          resources:
+            requests:
+              cpu: "3"
+              memory: 12Gi
+              nvidia.com/gpu: 1
+            limits:
+              memory: 14Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+            - name: cache
+              mountPath: /cache
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: script
+          configMap:
+            name: train-script
+        - name: cache
+          emptyDir: {}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi

@@ -1,0 +1,82 @@
+# A 2-GPU DDP training job submitted through Kueue.
+# Note what's MISSING compared with k8s/20-ddp-train.yaml: no GPU toleration, no nodeSelector.
+# Kueue's ResourceFlavor "gpu-l4" injects them when it admits the job.
+#
+#   kubectl --context spoke -n team-a create configmap train-script --from-file=training/train_ddp.py
+#   TEAM=team-a JOB=exp-1 PRIORITY=experiment envsubst '${TEAM} ${JOB} ${PRIORITY}' \
+#     < platform/examples/kueue-ddp-job.yaml | kubectl --context spoke apply -f -
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${JOB}
+  namespace: ${TEAM}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    job-name: ${JOB}
+  ports:
+    - name: rdzv
+      port: 29500
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB}
+  namespace: ${TEAM}
+  labels:
+    kueue.x-k8s.io/queue-name: training # -> LocalQueue -> ClusterQueue ${TEAM}
+    kueue.x-k8s.io/priority-class: ${PRIORITY} # WorkloadPriorityClass: production | experiment
+spec:
+  suspend: true # Kueue's webhook sets this anyway; being explicit makes the flow obvious
+  completionMode: Indexed
+  completions: 2
+  parallelism: 2
+  backoffLimit: 0
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      subdomain: ${JOB}
+      restartPolicy: Never
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  job-name: ${JOB}
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: trainer
+          image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --quiet "transformers==4.46.3" "datasets==3.1.0"
+              torchrun --nnodes=2 --nproc_per_node=1 --node_rank=${JOB_COMPLETION_INDEX} \
+                --master_addr=${JOB}-0.${JOB} --master_port=29500 /scripts/train_ddp.py
+          env:
+            - name: MODEL_ID
+              value: Qwen/Qwen2.5-0.5B
+            - name: MAX_STEPS
+              value: "3000" # long enough to watch queueing and preemption happen
+            - name: HF_HOME
+              value: /cache
+          resources:
+            requests: { cpu: "3", memory: 12Gi, nvidia.com/gpu: 1 }
+            limits: { memory: 14Gi, nvidia.com/gpu: 1 }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+            - { name: cache, mountPath: /cache }
+            - { name: shm, mountPath: /dev/shm }
+      volumes:
+        - name: script
+          configMap:
+            name: train-script
+        - name: cache
+          emptyDir: {}
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: 4Gi }

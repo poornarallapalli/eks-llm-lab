@@ -1,0 +1,22 @@
+# Scrape vLLM's /metrics with kube-prometheus-stack (installed in step 7 of the README).
+# Key series: vllm:num_requests_running, vllm:num_requests_waiting,
+# vllm:gpu_cache_usage_perc (KV cache), vllm:time_to_first_token_seconds,
+# vllm:time_per_output_token_seconds, vllm:generation_tokens_total
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm
+  namespace: llm
+  labels:
+    release: kps
+spec:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["vllm-qwen", "vllm-finetuned"]
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

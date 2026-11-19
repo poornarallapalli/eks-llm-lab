@@ -1,0 +1,114 @@
+# Two research teams sharing the spoke's GPUs through Kueue.
+# Each team is guaranteed 2 GPUs (nominalQuota) and may borrow 2 more from the cohort
+# while the other team is idle. The owner gets borrowed quota back by preemption.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-b
+---
+# A "flavor" = a kind of capacity. Kueue injects the nodeLabels as a nodeSelector and the
+# tolerations into admitted pods, so users don't have to know about taints.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-l4
+spec:
+  nodeLabels:
+    workload: llm # the lab's Karpenter gpu NodePool label
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: team-a
+spec:
+  cohortName: research
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: team-a
+  queueingStrategy: BestEffortFIFO # a big job that doesn't fit doesn't block smaller ones behind it
+  preemption:
+    reclaimWithinCohort: Any # take back lent quota
+    withinClusterQueue: LowerPriority # a team's prod job can preempt its own experiments
+  resourceGroups:
+    - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+      flavors:
+        - name: gpu-l4
+          resources:
+            - name: cpu
+              nominalQuota: 16
+              borrowingLimit: 16
+            - name: memory
+              nominalQuota: 64Gi
+              borrowingLimit: 64Gi
+            - name: nvidia.com/gpu
+              nominalQuota: 2
+              borrowingLimit: 2
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: team-b
+spec:
+  cohortName: research
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: team-b
+  queueingStrategy: BestEffortFIFO
+  preemption:
+    reclaimWithinCohort: Any
+    withinClusterQueue: LowerPriority
+  resourceGroups:
+    - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+      flavors:
+        - name: gpu-l4
+          resources:
+            - name: cpu
+              nominalQuota: 16
+              borrowingLimit: 16
+            - name: memory
+              nominalQuota: 64Gi
+              borrowingLimit: 64Gi
+            - name: nvidia.com/gpu
+              nominalQuota: 2
+              borrowingLimit: 2
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: training
+  namespace: team-a
+spec:
+  clusterQueue: team-a
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: training
+  namespace: team-b
+spec:
+  clusterQueue: team-b
+---
+# Priorities used for preemption decisions (not pod scheduling priority)
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: production
+value: 1000
+description: "Committed training runs. Preempts experiments."
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: experiment
+value: 100
+description: "Research experiments. Preemptible: must checkpoint."

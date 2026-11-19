@@ -1,0 +1,85 @@
+# Three test clients to see each security layer in action:
+#   apps/llm-client  - in mesh, allowed ServiceAccount     -> 200 OK
+#   apps/intruder    - in mesh, wrong ServiceAccount       -> 403 from Istio AuthorizationPolicy (L7)
+#   outsider/curl    - not in mesh, namespace not allowed  -> timeout from Calico NetworkPolicy (L3/L4)
+# Apply: kubectl apply -f k8s/61-test-clients.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+  labels:
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: llm-client
+  namespace: apps
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: intruder
+  namespace: apps
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-client
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: llm-client }
+  template:
+    metadata:
+      labels: { app: llm-client }
+    spec:
+      serviceAccountName: llm-client
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["sleep", "infinity"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intruder
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: intruder }
+  template:
+    metadata:
+      labels: { app: intruder }
+    spec:
+      serviceAccountName: intruder
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["sleep", "infinity"]
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: outsider # no istio-injection label: plain pods, no sidecar
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curl
+  namespace: outsider
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: curl }
+  template:
+    metadata:
+      labels: { app: curl }
+    spec:
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["sleep", "infinity"]

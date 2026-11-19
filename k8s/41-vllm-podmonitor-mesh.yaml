@@ -1,0 +1,22 @@
+# Use this INSTEAD of 40-vllm-podmonitor.yaml once vLLM pods have Istio sidecars and
+# STRICT mTLS. Prometheus is not in the mesh, so a plaintext scrape of :8000 is rejected.
+# Istio's metrics merging serves the app's /metrics (from the prometheus.io/* annotations)
+# plus Envoy's istio_* metrics on :15020/stats/prometheus, outside mTLS.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm
+  namespace: llm
+  labels:
+    release: kps
+spec:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["vllm-qwen", "vllm-finetuned"]
+  podMetricsEndpoints:
+    - targetPort: 15020
+      path: /stats/prometheus
+      interval: 15s

@@ -1,0 +1,101 @@
+# LLM inference: vLLM serving an OpenAI-compatible API on one GPU.
+# Apply: kubectl apply -f k8s/10-vllm-serve.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen
+  namespace: llm
+  labels:
+    app: vllm-qwen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-qwen
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen
+      annotations:
+        # Plain Prometheus hint. With an Istio sidecar, Istio "merges" these app metrics
+        # into its own endpoint on :15020/stats/prometheus (see 41-vllm-podmonitor-mesh.yaml)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        workload: llm
+      containers:
+        - name: vllm
+          # Pin a version you've tested. Check https://github.com/vllm-project/vllm/releases
+          image: vllm/vllm-openai:v0.34.0
+          args:
+            - --model=Qwen/Qwen2.5-1.5B-Instruct # ungated, no HF token needed
+            - --served-model-name=qwen
+            - --max-model-len=4096
+            - --gpu-memory-utilization=0.90 # fraction of VRAM vLLM pre-allocates (weights + KV cache)
+            - --port=8000
+          env:
+            - name: HF_HOME
+              value: /models
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "3"
+              memory: 12Gi
+              nvidia.com/gpu: 1
+            limits:
+              memory: 14Gi
+              nvidia.com/gpu: 1
+          # Model download + CUDA graph capture takes a few minutes on first start.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60 # up to 10 min
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: models
+          emptyDir: {}
+        # PyTorch/NCCL use shared memory; the 64Mi container default is too small.
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-qwen
+  namespace: llm
+  labels:
+    app: vllm-qwen
+spec:
+  selector:
+    app: vllm-qwen
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

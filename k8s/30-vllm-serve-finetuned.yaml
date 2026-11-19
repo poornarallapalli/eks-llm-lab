@@ -1,0 +1,99 @@
+# Close the loop: serve the model YOU fine-tuned, pulled from S3 by an initContainer
+# using Pod Identity (ServiceAccount llm/trainer). No HF download, no static keys.
+#
+#   export BUCKET=$(terraform -chdir=terraform output -raw artifacts_bucket)
+#   envsubst '${BUCKET}' < k8s/30-vllm-serve-finetuned.yaml | kubectl apply -f -
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-finetuned
+  namespace: llm
+  labels:
+    app: vllm-finetuned
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-finetuned
+  template:
+    metadata:
+      labels:
+        app: vllm-finetuned
+      annotations:
+        # Plain Prometheus hint. With an Istio sidecar, Istio "merges" these app metrics
+        # into its own endpoint on :15020/stats/prometheus (see 41-vllm-podmonitor-mesh.yaml)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: trainer
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        workload: llm
+      initContainers:
+        - name: fetch-model
+          image: public.ecr.aws/aws-cli/aws-cli:latest
+          args: ["s3", "sync", "s3://${BUCKET}/models/qwen2.5-0.5b-dolly/", "/models/finetuned/"]
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.34.0
+          args:
+            - --model=/models/finetuned
+            # Two names: "qwen-dolly" to call it explicitly, and "qwen" so it can take
+            # canary traffic meant for the base model (Istio weighted routing, see 60-istio-mesh.yaml)
+            - --served-model-name
+            - qwen-dolly
+            - qwen
+            - --max-model-len=2048
+            - --gpu-memory-utilization=0.90
+            - --port=8000
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "3"
+              memory: 12Gi
+              nvidia.com/gpu: 1
+            limits:
+              memory: 14Gi
+              nvidia.com/gpu: 1
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: models
+          emptyDir: {}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-finetuned
+  namespace: llm
+spec:
+  selector:
+    app: vllm-finetuned
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
