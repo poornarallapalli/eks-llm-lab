@@ -1,0 +1,10 @@
+# staging has a 2-GPU pool: 1 guaranteed per team, borrow 1
+teams:
+  - name: team-a
+    gpu: { nominal: 1, borrowingLimit: 1 }
+    cpu: { nominal: 8, borrowingLimit: 8 }
+    memory: { nominal: 32Gi, borrowingLimit: 32Gi }
+  - name: team-b
+    gpu: { nominal: 1, borrowingLimit: 1 }
+    cpu: { nominal: 8, borrowingLimit: 8 }
+    memory: { nominal: 32Gi, borrowingLimit: 32Gi }

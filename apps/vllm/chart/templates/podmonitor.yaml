@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Values.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  podMetricsEndpoints:
+  {{- if .Values.mesh }}
+    # STRICT mTLS rejects Prometheus' plaintext scrape of :8000. Istio merges vLLM's
+    # metrics (from the prometheus.io annotations) with Envoy's on :15020, outside mTLS.
+    - targetPort: 15020
+      path: /stats/prometheus
+      interval: 15s
+  {{- else }}
+    - port: http
+      path: /metrics
+      interval: 15s
+  {{- end }}

@@ -1,0 +1,14 @@
+# Calico-only capability: an explicit DENY with a priority (order). Kubernetes
+# NetworkPolicy can only allow. Evaluated before Kubernetes policies (order 1000).
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: deny-imds-workloads
+spec:
+  order: 100
+  namespaceSelector: kubernetes.io/metadata.name in {'llm', 'apps', 'sandboxes'}
+  types: [Egress]
+  egress:
+    - action: Deny
+      destination:
+        nets: [169.254.169.254/32]

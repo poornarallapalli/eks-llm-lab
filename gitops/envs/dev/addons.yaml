@@ -1,0 +1,9 @@
+# Platform add-on versions for THIS environment.
+# Promote an upgrade = a PR that changes a version here, after it has run in the previous env.
+# ApplicationSets read this file (git files generator) and deploy these exact versions to
+# every cluster whose Argo CD cluster secret has label env=<this folder name>.
+calico: v3.33.1        # projectcalico tigera-operator chart
+istio: 1.32.0          # istio/base, istio/istiod, istio/gateway charts
+kubePrometheusStack: 93.4.1
+kueue: 0.20.6          # OCI: registry.k8s.io/kueue/charts
+agentSandbox: v1.0.12  # git tag of kubernetes-sigs/agent-sandbox (its helm/ chart)

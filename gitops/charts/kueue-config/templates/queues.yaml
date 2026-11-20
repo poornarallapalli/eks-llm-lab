@@ -1,0 +1,60 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-l4
+spec:
+  nodeLabels:
+    workload: llm            # Karpenter gpu NodePool label
+  tolerations:               # injected into admitted pods: users never write GPU tolerations
+    - { key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: production
+value: 1000
+description: "Committed runs. Preempts experiments."
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: experiment
+value: 100
+description: "Preemptible research. Must checkpoint."
+{{- range .Values.teams }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .name }}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: {{ .name }}
+spec:
+  cohortName: {{ $.Values.cohort }}
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ .name }}
+  queueingStrategy: BestEffortFIFO
+  preemption:
+    reclaimWithinCohort: Any
+    withinClusterQueue: LowerPriority
+  resourceGroups:
+    - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+      flavors:
+        - name: gpu-l4
+          resources:
+            - { name: cpu, nominalQuota: {{ .cpu.nominal }}, borrowingLimit: {{ .cpu.borrowingLimit }} }
+            - { name: memory, nominalQuota: {{ .memory.nominal }}, borrowingLimit: {{ .memory.borrowingLimit }} }
+            - { name: nvidia.com/gpu, nominalQuota: {{ .gpu.nominal }}, borrowingLimit: {{ .gpu.borrowingLimit }} }
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: training
+  namespace: {{ .name }}
+spec:
+  clusterQueue: {{ .name }}
+{{- end }}

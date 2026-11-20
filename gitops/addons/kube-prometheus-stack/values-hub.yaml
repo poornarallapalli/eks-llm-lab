@@ -1,0 +1,15 @@
+grafana:
+  enabled: true
+  adminPassword: admin123   # lab only. Prod: SSO (OIDC) and no local admin
+  grafana.ini:
+    auth:
+      sigv4_auth_enabled: true            # lets the Prometheus datasource sign requests to AMP
+    aws:
+      allowed_auth_providers: default     # AWS SDK default chain -> EKS Pod Identity
+  sidecar:
+    datasources:
+      defaultDatasourceEnabled: false     # the AMP datasource (added by the ApplicationSet) is the default
+    dashboards:
+      multicluster:
+        global:
+          enabled: true                   # "cluster" dropdown on the bundled dashboards

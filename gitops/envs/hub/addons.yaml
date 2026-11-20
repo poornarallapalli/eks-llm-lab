@@ -1,0 +1,2 @@
+# Add-on versions for the hub (management) cluster.
+kubePrometheusStack: 93.4.1

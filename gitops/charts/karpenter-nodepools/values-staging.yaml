@@ -1,0 +1,5 @@
+gpu:
+  gpuLimit: 2                   # staging gets fewer GPUs than dev experiments
+  capacityTypes: [on-demand]    # staging behaves like prod: no Spot interruptions
+sandbox:
+  cpuLimit: 16

@@ -1,0 +1,16 @@
+# Every cluster runs a local Prometheus that scrapes it and remote_writes to Amazon
+# Managed Prometheus (URL + SigV4 region come from the cluster secret annotations).
+prometheus:
+  prometheusSpec:
+    retention: 6h           # local copy is only a buffer; AMP is the long-term store
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+alertmanager:
+  enabled: false            # lab: alert from AMP/Grafana. Prod: AMP alert manager or local AM
+grafana:
+  enabled: false            # only the hub runs Grafana

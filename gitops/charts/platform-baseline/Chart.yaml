@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform-baseline
+description: Namespaces, baseline Calico network policy and Istio mesh security every spoke gets
+type: application
+version: 0.1.0

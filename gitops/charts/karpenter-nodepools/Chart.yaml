@@ -1,0 +1,5 @@
+apiVersion: v2
+name: karpenter-nodepools
+description: Karpenter EC2NodeClasses + NodePools (default CPU, GPU, sandbox) for one cluster
+type: application
+version: 0.1.0

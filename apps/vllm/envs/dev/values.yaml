@@ -1,0 +1,4 @@
+# What DEV runs. Deploy a new image: change image.tag here -> PR -> merge.
+image:
+  tag: v0.34.0
+replicas: 1

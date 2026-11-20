@@ -1,0 +1,18 @@
+# Defaults. Each environment overrides only what differs in apps/vllm/envs/<env>/values.yaml.
+name: vllm-qwen
+replicas: 1
+image:
+  repository: vllm/vllm-openai
+  tag: v0.34.0          # <- the line you change (per env) to deploy a new image
+model: Qwen/Qwen2.5-1.5B-Instruct
+servedModelName: qwen
+maxModelLen: 4096
+gpuMemoryUtilization: "0.90"
+resources:
+  cpu: "3"
+  memory: 12Gi
+  memoryLimit: 14Gi
+  gpu: 1
+mesh: true              # namespace llm is sidecar-injected; metrics scraped via :15020
+pdb:
+  enabled: false

@@ -1,0 +1,14 @@
+# Set per cluster by the ApplicationSet from the cluster secret (GitOps Bridge)
+clusterName: ""
+
+default:
+  cpuLimit: 32
+gpu:
+  enabled: true
+  gpuLimit: 4                   # hard cost guardrail for the whole pool
+  instanceFamilies: [g6, g5, g6e]
+  instanceSizes: [xlarge, 2xlarge, 4xlarge]
+  capacityTypes: [spot, on-demand]
+sandbox:
+  enabled: true
+  cpuLimit: 32

@@ -1,0 +1,4 @@
+prometheus:
+  prometheusSpec:
+    replicas: 2             # HA pair; AMP de-duplicates (cluster + __replica__ labels)
+    replicaExternalLabelName: __replica__

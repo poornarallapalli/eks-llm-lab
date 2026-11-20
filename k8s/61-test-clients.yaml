@@ -3,13 +3,8 @@
 #   apps/intruder    - in mesh, wrong ServiceAccount       -> 403 from Istio AuthorizationPolicy (L7)
 #   outsider/curl    - not in mesh, namespace not allowed  -> timeout from Calico NetworkPolicy (L3/L4)
 # Apply: kubectl apply -f k8s/61-test-clients.yaml
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: apps
-  labels:
-    istio-injection: enabled
+
+# Namespace `apps` (sidecar-injected) is created by the platform-baseline add-on.
 ---
 apiVersion: v1
 kind: ServiceAccount

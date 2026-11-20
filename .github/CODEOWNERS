@@ -1,0 +1,6 @@
+# Staging (and later prod) changes need the platform owner's review.
+# Pair with branch protection on main: require PR, 1 approval, CODEOWNERS review, the "validate" checks.
+/gitops/envs/staging/     @poornarallapalli
+/apps/vllm/envs/staging/  @poornarallapalli
+/infra/envs/staging/      @poornarallapalli
+/infra/hub/               @poornarallapalli

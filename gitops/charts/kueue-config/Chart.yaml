@@ -1,0 +1,5 @@
+apiVersion: v2
+name: kueue-config
+description: Team namespaces, Kueue ResourceFlavor, ClusterQueues in a cohort, LocalQueues, priorities
+type: application
+version: 0.1.0

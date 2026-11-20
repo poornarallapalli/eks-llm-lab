@@ -1,0 +1,6 @@
+warmPool:
+  replicas: 2
+quota:
+  pods: "50"
+  requestsCpu: "12"
+  requestsMemory: 24Gi

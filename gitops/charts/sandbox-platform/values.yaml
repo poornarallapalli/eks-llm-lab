@@ -1,0 +1,7 @@
+warmPool:
+  replicas: 5       # Little's law: claim rate x time-to-replace, plus burst headroom
+image: python:3.12-slim
+quota:
+  pods: "100"
+  requestsCpu: "24"
+  requestsMemory: 48Gi

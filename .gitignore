@@ -1,5 +1,10 @@
+# Terraform: never commit state, plans or variable files (they can contain secrets)
 .terraform/
-*.tfstate*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
 tfplan
-.terraform.lock.hcl
+*.tfplan
+# NOTE: .terraform.lock.hcl IS committed (pins provider versions + checksums for everyone and CI)
 __pycache__/

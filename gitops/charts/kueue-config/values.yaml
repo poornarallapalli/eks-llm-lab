@@ -1,0 +1,10 @@
+cohort: research
+teams:
+  - name: team-a
+    gpu: { nominal: 2, borrowingLimit: 2 }
+    cpu: { nominal: 16, borrowingLimit: 16 }
+    memory: { nominal: 64Gi, borrowingLimit: 64Gi }
+  - name: team-b
+    gpu: { nominal: 2, borrowingLimit: 2 }
+    cpu: { nominal: 16, borrowingLimit: 16 }
+    memory: { nominal: 64Gi, borrowingLimit: 64Gi }

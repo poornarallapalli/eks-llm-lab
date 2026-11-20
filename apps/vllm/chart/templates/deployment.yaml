@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    {{- include "vllm.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0     # keep serving while a new version rolls out
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "vllm.labels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      tolerations:
+        - { key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }
+      nodeSelector:
+        workload: llm
+      containers:
+        - name: vllm
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          args:
+            - --model={{ .Values.model }}
+            - --served-model-name={{ .Values.servedModelName }}
+            - --max-model-len={{ .Values.maxModelLen }}
+            - --gpu-memory-utilization={{ .Values.gpuMemoryUtilization }}
+            - --port=8000
+          env:
+            - { name: HF_HOME, value: /models }
+          ports:
+            - { name: http, containerPort: 8000 }
+          resources:
+            requests:
+              cpu: {{ .Values.resources.cpu | quote }}
+              memory: {{ .Values.resources.memory }}
+              nvidia.com/gpu: {{ .Values.resources.gpu }}
+            limits:
+              memory: {{ .Values.resources.memoryLimit }}
+              nvidia.com/gpu: {{ .Values.resources.gpu }}
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - { name: models, mountPath: /models }
+            - { name: shm, mountPath: /dev/shm }
+      volumes:
+        - { name: models, emptyDir: {} }
+        - { name: shm, emptyDir: { medium: Memory, sizeLimit: 2Gi } }

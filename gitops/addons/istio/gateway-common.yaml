@@ -1,0 +1,2 @@
+service:
+  type: ClusterIP   # lab: reach it with port-forward. Prod: NLB via AWS Load Balancer Controller

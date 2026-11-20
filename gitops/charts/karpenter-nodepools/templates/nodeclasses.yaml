@@ -1,0 +1,35 @@
+{{- if not .Values.clusterName }}{{ fail "clusterName is required" }}{{ end }}
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  role: {{ .Values.clusterName }}
+  amiSelectorTerms:
+    - alias: bottlerocket@latest
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName }}
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu
+spec:
+  role: {{ .Values.clusterName }}
+  amiSelectorTerms:
+    - alias: bottlerocket@latest   # Karpenter picks the NVIDIA variant for GPU instance types
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName }}
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs: { volumeSize: 4Gi, volumeType: gp3, encrypted: true }
+    - deviceName: /dev/xvdb
+      ebs: { volumeSize: 150Gi, volumeType: gp3, iops: 6000, throughput: 500, encrypted: true }

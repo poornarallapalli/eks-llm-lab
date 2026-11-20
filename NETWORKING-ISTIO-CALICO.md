@@ -1,5 +1,7 @@
 # Calico + Istio on the EKS LLM Lab
 
+> **On platform v2, Calico and Istio are installed by Argo CD** (`calico`, `istio-base`, `istiod`, `istio-gateway` and `platform-baseline` add-ons), including the default-deny policies for `llm`, STRICT mTLS and access logging. Skip the Helm install steps and the `kubectl apply` of policies below. Use this guide for **how the layers work and the tests/drills** (test clients in `k8s/61-test-clients.yaml`, contexts `dev`/`staging`). The mesh routing manifests (Gateway, VirtualService canary, AuthorizationPolicy) from v1 are a good exercise to add to `apps/vllm/chart`.
+
 This adds two layers of networking control to the cluster from `README.md`:
 
 - **Calico** decides *which pods can open connections to which* (Layer 3/4: IPs, ports, namespaces). It enforces Kubernetes `NetworkPolicy` and adds its own richer policies.

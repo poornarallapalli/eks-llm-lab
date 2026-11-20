@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandboxes
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sandboxes
+  namespace: sandboxes
+spec:
+  hard:
+    pods: {{ .Values.quota.pods | quote }}
+    requests.cpu: {{ .Values.quota.requestsCpu | quote }}
+    requests.memory: {{ .Values.quota.requestsMemory }}
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: python-runtime
+  namespace: sandboxes
+spec:
+  networkPolicyManagement: Managed
+  networkPolicy:
+    ingress:
+      - from:
+          - namespaceSelector:
+              matchLabels: { kubernetes.io/metadata.name: sandboxes }
+    egress:
+      - to:
+          - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+            podSelector: { matchLabels: { k8s-app: kube-dns } }
+        ports:
+          - { protocol: UDP, port: 53 }
+          - { protocol: TCP, port: 53 }
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+              except: [10.0.0.0/8, 169.254.0.0/16]
+        ports:
+          - { protocol: TCP, port: 443 }
+  podTemplate:
+    metadata:
+      labels:
+        app: python-sandbox
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        workload: sandbox
+      tolerations:
+        - { key: sandbox, operator: Exists, effect: NoSchedule }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: runtime
+          image: {{ .Values.image }}
+          command: ["python", "-m", "http.server", "8888", "--directory", "/workspace"]
+          ports:
+            - containerPort: 8888
+          readinessProbe:
+            tcpSocket: { port: 8888 }
+            periodSeconds: 1
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: workspace, mountPath: /workspace }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: workspace, emptyDir: { sizeLimit: 1Gi } }
+        - { name: tmp, emptyDir: { sizeLimit: 256Mi } }
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: python-runtime
+  namespace: sandboxes
+spec:
+  replicas: {{ .Values.warmPool.replicas }}
+  sandboxTemplateRef:
+    name: python-runtime

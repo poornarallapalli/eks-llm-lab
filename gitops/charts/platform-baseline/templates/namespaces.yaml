@@ -1,0 +1,14 @@
+# Namespaces owned by the platform. Workload teams deploy INTO them.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm
+  labels:
+    istio-injection: enabled   # vLLM servers join the mesh; training Jobs opt out per pod
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+  labels:
+    istio-injection: enabled   # clients that call the model servers

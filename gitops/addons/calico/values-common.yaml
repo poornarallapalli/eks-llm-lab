@@ -1,0 +1,14 @@
+# Calico in POLICY-ONLY mode on EKS: VPC CNI keeps doing pod networking + IPAM,
+# Calico only enforces NetworkPolicy / GlobalNetworkPolicy.
+installation:
+  kubernetesProvider: EKS
+  cni:
+    type: AmazonVPC
+    ipam:
+      type: AmazonVPC
+apiServer:
+  enabled: true   # serves projectcalico.org/v3 (GlobalNetworkPolicy etc.) to kubectl/Argo CD
+goldmane:
+  enabled: true   # flow aggregation
+whisker:
+  enabled: true   # flow-log UI

@@ -20,6 +20,7 @@ spec:
     metadata:
       labels:
         app: vllm-finetuned
+        app.kubernetes.io/component: model-server   # matched by the platform's llm NetworkPolicy
       annotations:
         # Plain Prometheus hint. With an Istio sidecar, Istio "merges" these app metrics
         # into its own endpoint on :15020/stats/prometheus (see 41-vllm-podmonitor-mesh.yaml)

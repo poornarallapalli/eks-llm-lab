@@ -1,7 +1,0 @@
-# Agent Sandbox (kubernetes-sigs/agent-sandbox): core Sandbox CRD + extensions
-# (SandboxTemplate, SandboxWarmPool, SandboxClaim) and the controller, from the pinned
-# release manifest. Bump the version here and Argo CD rolls it out to every spoke.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.12/sandbox-with-extensions.yaml

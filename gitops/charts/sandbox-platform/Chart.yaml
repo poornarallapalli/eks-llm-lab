@@ -1,0 +1,5 @@
+apiVersion: v2
+name: sandbox-platform
+description: Code-execution sandbox service (Agent Sandbox template, warm pool, quota)
+type: application
+version: 0.1.0

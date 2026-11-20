@@ -1,0 +1,11 @@
+# Sidecar mode. Native sidecars are on by default ("auto") in Istio 1.32 on K8s >= 1.29,
+# so injected Jobs complete normally.
+pilot:
+  autoscaleEnabled: false
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+meshConfig:
+  accessLogFile: ""            # access logs are enabled per-namespace via the Telemetry API instead
+  enablePrometheusMerge: true  # app + Envoy metrics on :15020, scrapeable outside mTLS

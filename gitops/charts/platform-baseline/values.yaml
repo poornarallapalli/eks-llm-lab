@@ -1,0 +1,6 @@
+mesh:
+  strictMTLS: true        # PeerAuthentication STRICT in the llm namespace
+  accessLogs: true        # Envoy access logs mesh-wide via the Telemetry API
+network:
+  defaultDenyLLM: true    # default-deny + allow-list in the llm namespace
+  vpcCIDR: 10.0.0.0/8     # never allow 443 egress into private ranges

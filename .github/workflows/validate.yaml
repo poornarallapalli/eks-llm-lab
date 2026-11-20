@@ -1,0 +1,44 @@
+# Runs on every PR: nothing reaches main (and therefore no cluster) unless it renders and validates.
+name: validate
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [infra/bootstrap-state, infra/envs/dev, infra/envs/staging, infra/hub]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive infra
+      - run: terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
+      - run: terraform -chdir=${{ matrix.dir }} validate
+
+  gitops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Bootstrap ApplicationSets are up to date with the generator
+        run: |
+          pip install pyyaml
+          python3 scripts/gen_bootstrap.py
+          git diff --exit-code gitops/bootstrap
+      - name: Render every local chart for every environment
+        run: |
+          set -e
+          for env in dev staging; do
+            helm template t gitops/charts/karpenter-nodepools -f gitops/charts/karpenter-nodepools/values.yaml \
+              $( [ -f gitops/charts/karpenter-nodepools/values-$env.yaml ] && echo -f gitops/charts/karpenter-nodepools/values-$env.yaml ) \
+              --set clusterName=llm-$env > /dev/null
+            for c in platform-baseline kueue-config sandbox-platform; do
+              f=gitops/charts/$c/values-$env.yaml
+              helm template t gitops/charts/$c $( [ -f $f ] && echo -f $f ) > /dev/null
+            done
+            helm template t apps/vllm/chart -f apps/vllm/envs/$env/values.yaml > /dev/null
+            echo "rendered all charts for $env"
+          done

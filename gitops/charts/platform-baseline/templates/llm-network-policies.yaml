@@ -1,0 +1,91 @@
+{{- if .Values.network.defaultDenyLLM }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: llm }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-dns, namespace: llm }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# DDP rendezvous (29500) + NCCL dynamic ports between ranks, and mesh traffic within llm
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-intra-namespace, namespace: llm }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ podSelector: {} }]
+  egress:
+    - to: [{ podSelector: {} }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-https, namespace: llm }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [{{ .Values.network.vpcCIDR }}, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# EKS Pod Identity agent: trainer's S3 credentials
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-pod-identity-agent, namespace: llm }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ ipBlock: { cidr: 169.254.170.23/32 } }]
+      ports:
+        - { protocol: TCP, port: 80 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-istiod, namespace: llm }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: istio-system } } }]
+      ports:
+        - { protocol: TCP, port: 15012 }
+---
+# Who may reach the model servers: gateway, apps clients, Prometheus (8000 app, 15020/15090 sidecar metrics)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-to-model-servers, namespace: llm }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: model-server }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [istio-ingress, apps, monitoring]
+      ports:
+        - { protocol: TCP, port: 8000 }
+        - { protocol: TCP, port: 15020 }
+        - { protocol: TCP, port: 15090 }
+{{- end }}
