@@ -7,3 +7,4 @@ replicas: 1
 extraArgs:
   - --enable-auto-tool-choice
   - --tool-call-parser=hermes
+maxModelLen: 32768
