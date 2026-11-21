@@ -1,11 +1,14 @@
 grafana:
   enabled: true
   adminPassword: admin123   # lab only. Prod: SSO (OIDC) and no local admin
+  # Grafana 12+: SigV4 for AMP lives in the dedicated "Amazon Managed Service for Prometheus"
+  # datasource plugin (the core Prometheus datasource no longer signs requests).
+  plugins:
+    - grafana-amazonprometheus-datasource
   grafana.ini:
-    auth:
-      sigv4_auth_enabled: true            # lets the Prometheus datasource sign requests to AMP
     aws:
       allowed_auth_providers: default     # AWS SDK default chain -> EKS Pod Identity
+      forward_settings_to_plugins: grafana-amazonprometheus-datasource
   sidecar:
     datasources:
       defaultDatasourceEnabled: false     # the AMP datasource (added by the ApplicationSet) is the default

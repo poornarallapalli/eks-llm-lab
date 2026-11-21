@@ -74,7 +74,7 @@ spec:
               additionalDataSources:
               - name: Amazon Managed Prometheus
                 uid: amp
-                type: prometheus
+                type: grafana-amazonprometheus-datasource
                 isDefault: true
                 url: '{{index .metadata.annotations "amp_query_url"}}'
                 jsonData:

@@ -190,7 +190,9 @@ hub = [
                   {**KPS_REMOTE, "grafana": {"additionalDataSources": [{
                       "name": "Amazon Managed Prometheus",
                       "uid": "amp",
-                      "type": "prometheus",
+                      # Grafana 12+ removed SigV4 from the core Prometheus datasource; AMP needs
+                      # the dedicated plugin (installed via values-hub.yaml -> grafana.plugins)
+                      "type": "grafana-amazonprometheus-datasource",
                       "isDefault": True,
                       "url": AMP_QUERY,
                       "jsonData": {"sigV4Auth": True, "sigV4AuthType": "default",
