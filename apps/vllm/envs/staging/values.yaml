@@ -2,6 +2,6 @@
 # replicas: 0 keeps staging GPUs off until you test a promotion (set to 1 in that PR).
 image:
   tag: v0.34.0
-replicas: 0
+replicas: 2
 pdb:
   enabled: true
