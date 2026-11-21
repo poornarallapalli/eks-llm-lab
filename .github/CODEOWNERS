@@ -4,3 +4,7 @@
 /apps/vllm/envs/staging/  @poornarallapalli
 /infra/envs/staging/      @poornarallapalli
 /infra/hub/               @poornarallapalli
+/infra/shared/            @poornarallapalli
+/infra/modules/           @poornarallapalli
+/apps/model-ingest/       @poornarallapalli
+/.github/                 @poornarallapalli

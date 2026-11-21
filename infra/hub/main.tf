@@ -291,6 +291,7 @@ locals {
     aws_region           = var.region
     amp_remote_write_url = local.amp_remote_write_url
     amp_query_url        = local.amp_query_url
+    model_registry       = "llm-lab-model-registry-${local.account_id}" # infra/shared
   }
 }
 
