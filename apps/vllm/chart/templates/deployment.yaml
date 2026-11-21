@@ -35,6 +35,9 @@ spec:
             - --max-model-len={{ .Values.maxModelLen }}
             - --gpu-memory-utilization={{ .Values.gpuMemoryUtilization }}
             - --port=8000
+            {{- range .Values.extraArgs }}
+            - {{ . }}
+            {{- end }}
           env:
             - { name: HF_HOME, value: /models }
           ports:
