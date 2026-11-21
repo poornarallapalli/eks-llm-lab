@@ -2,3 +2,8 @@
 image:
   tag: v0.33.0
 replicas: 1
+# Tool/function calling, needed by Open WebUI and agent frameworks that send tool_choice=auto.
+# Qwen2.5 emits Hermes-style tool calls, so vLLM must parse them with the hermes parser.
+extraArgs:
+  - --enable-auto-tool-choice
+  - --tool-call-parser=hermes

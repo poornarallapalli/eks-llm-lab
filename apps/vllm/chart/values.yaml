@@ -13,6 +13,7 @@ resources:
   memory: 12Gi
   memoryLimit: 14Gi
   gpu: 1
+extraArgs: []
 mesh: true              # namespace llm is sidecar-injected; metrics scraped via :15020
 pdb:
   enabled: false
