@@ -160,7 +160,7 @@ resource "helm_release" "karpenter" {
 
 ################################################################################
 # Per-environment S3 bucket for checkpoints / fine-tuned models + a Pod Identity
-# role for ServiceAccount llm/trainer. Each environment can only reach its own bucket.
+# role for ServiceAccount llm/trainer (training jobs). Each environment can only reach its own bucket.
 ################################################################################
 resource "aws_s3_bucket" "artifacts" {
   bucket_prefix = "${var.cluster_name}-artifacts-"
@@ -209,4 +209,120 @@ resource "aws_eks_pod_identity_association" "trainer" {
   namespace       = "llm"
   service_account = "trainer"
   role_arn        = aws_iam_role.trainer.arn
+}
+
+################################################################################
+# Model serving + secrets (least privilege, all via Pod Identity)
+#   - llm/vllm          serving pods: READ-ONLY on the shared model registry (models/*). No token.
+#   - llm/model-ingest  only where ingest runs (dev): read + PutObject on models/* (no delete;
+#                       the registry bucket policy also denies writes from every other role)
+#   - external-secrets  read ONLY secrets under var.secrets_prefix (+ KMS decrypt via Secrets Manager)
+################################################################################
+locals {
+  model_registry_bucket = var.model_registry_bucket != "" ? var.model_registry_bucket : "llm-lab-model-registry-${data.aws_caller_identity.current.account_id}"
+  model_registry_arn    = "arn:aws:s3:::${local.model_registry_bucket}"
+}
+
+resource "aws_iam_role" "vllm" {
+  name               = "${var.cluster_name}-vllm"
+  assume_role_policy = data.aws_iam_policy_document.pod_identity_trust.json
+  tags               = local.tags
+}
+
+resource "aws_iam_role_policy" "vllm_models_read" {
+  name = "model-registry-read"
+  role = aws_iam_role.vllm.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Action    = ["s3:ListBucket"]
+        Resource  = [local.model_registry_arn]
+        Condition = { StringLike = { "s3:prefix" = ["models/*"] } }
+      },
+      { Effect = "Allow", Action = ["s3:GetObject"], Resource = ["${local.model_registry_arn}/models/*"] },
+    ]
+  })
+}
+
+resource "aws_eks_pod_identity_association" "vllm" {
+  cluster_name    = module.eks.cluster_name
+  namespace       = "llm"
+  service_account = "vllm"
+  role_arn        = aws_iam_role.vllm.arn
+}
+
+resource "aws_iam_role" "model_ingest" {
+  count              = var.model_ingest_enabled ? 1 : 0
+  name               = "${var.cluster_name}-model-ingest"
+  assume_role_policy = data.aws_iam_policy_document.pod_identity_trust.json
+  tags               = local.tags
+}
+
+resource "aws_iam_role_policy" "model_ingest" {
+  count = var.model_ingest_enabled ? 1 : 0
+  name  = "model-registry-publish"
+  role  = aws_iam_role.model_ingest[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Action    = ["s3:ListBucket"]
+        Resource  = [local.model_registry_arn]
+        Condition = { StringLike = { "s3:prefix" = ["models/*"] } }
+      },
+      { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${local.model_registry_arn}/models/*"] },
+    ]
+  })
+}
+
+resource "aws_eks_pod_identity_association" "model_ingest" {
+  count           = var.model_ingest_enabled ? 1 : 0
+  cluster_name    = module.eks.cluster_name
+  namespace       = "llm"
+  service_account = "model-ingest"
+  role_arn        = aws_iam_role.model_ingest[0].arn
+}
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+resource "aws_iam_role" "external_secrets" {
+  name               = "${var.cluster_name}-external-secrets"
+  assume_role_policy = data.aws_iam_policy_document.pod_identity_trust.json
+  tags               = local.tags
+}
+
+resource "aws_iam_role_policy" "external_secrets_read" {
+  name = "secretsmanager-read-prefix"
+  role = aws_iam_role.external_secrets.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:ListSecretVersionIds",
+      ]
+      # Secrets Manager appends a random 6-char suffix to every secret ARN
+      Resource = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:${var.secrets_prefix}*"
+      }, {
+      # Secrets are encrypted with the shared customer-managed key (infra/shared); decrypt only via Secrets Manager
+      Effect    = "Allow"
+      Action    = ["kms:Decrypt"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.${data.aws_region.current.region}.amazonaws.com" } }
+    }]
+  })
+}
+
+resource "aws_eks_pod_identity_association" "external_secrets" {
+  cluster_name    = module.eks.cluster_name
+  namespace       = "external-secrets"
+  service_account = "external-secrets"
+  role_arn        = aws_iam_role.external_secrets.arn
 }

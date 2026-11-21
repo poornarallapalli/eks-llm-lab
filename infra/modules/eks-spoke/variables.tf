@@ -38,3 +38,21 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "secrets_prefix" {
+  description = "Secrets Manager name prefix this cluster's External Secrets may read (e.g. llm-lab/hf-token)"
+  type        = string
+  default     = "llm-lab/"
+}
+
+variable "model_registry_bucket" {
+  description = "Shared model registry bucket (infra/shared). Empty = llm-lab-model-registry-<account id>"
+  type        = string
+  default     = ""
+}
+
+variable "model_ingest_enabled" {
+  description = "Create the llm/model-ingest role (publish to the model registry). Only the environment that ingests models (dev)."
+  type        = bool
+  default     = false
+}

@@ -17,3 +17,7 @@ output "vpc_id" {
 output "artifacts_bucket" {
   value = aws_s3_bucket.artifacts.bucket
 }
+
+output "model_registry_bucket" {
+  value = local.model_registry_bucket
+}
