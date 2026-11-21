@@ -168,7 +168,7 @@ spec:
             factor: 2
             maxDuration: 5m
       source:
-        repoURL: https://istio-release.storage.googleapis.com/charts
+        repoURL: ghcr.io/istio/release/charts
         chart: base
         targetRevision: '{{.istio}}'
         helm:
@@ -235,7 +235,7 @@ spec:
             factor: 2
             maxDuration: 5m
       sources:
-      - repoURL: https://istio-release.storage.googleapis.com/charts
+      - repoURL: ghcr.io/istio/release/charts
         chart: istiod
         targetRevision: '{{.istio}}'
         helm:
@@ -304,7 +304,7 @@ spec:
             factor: 2
             maxDuration: 5m
       sources:
-      - repoURL: https://istio-release.storage.googleapis.com/charts
+      - repoURL: ghcr.io/istio/release/charts
         chart: gateway
         targetRevision: '{{.istio}}'
         helm:
@@ -673,6 +673,63 @@ spec:
         path: gitops/charts/sandbox-platform
         helm:
           releaseName: sandbox-platform
+          ignoreMissingValueFiles: true
+          valueFiles:
+          - values.yaml
+          - values-{{.path.basename}}.yaml
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: mesh-lab
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions:
+  - missingkey=error
+  generators:
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://github.com/poornarallapalli/eks-llm-lab.git
+          revision: main
+          files:
+          - path: gitops/envs/*/addons.yaml
+      - clusters:
+          selector:
+            matchLabels:
+              role: spoke
+              env: '{{.path.basename}}'
+  template:
+    metadata:
+      name: mesh-lab-{{.name}}
+      labels:
+        addon: mesh-lab
+        env: '{{.path.basename}}'
+    spec:
+      project: default
+      destination:
+        server: '{{.server}}'
+        namespace: mesh-lab
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 20
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m
+      source:
+        repoURL: https://github.com/poornarallapalli/eks-llm-lab.git
+        targetRevision: main
+        path: gitops/charts/mesh-lab
+        helm:
+          releaseName: mesh-lab
           ignoreMissingValueFiles: true
           valueFiles:
           - values.yaml

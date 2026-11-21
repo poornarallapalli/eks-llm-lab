@@ -1,0 +1,60 @@
+# Open WebUI: a ChatGPT-style chat UI for the vLLM model server in the same cluster.
+# Runs in the `apps` namespace, which the platform's Calico policy allows to reach llm/vllm-qwen:8000,
+# and which is sidecar-injected, so the call to vLLM goes over Istio mTLS like a real client.
+#
+#   kubectl --context dev     apply -f k8s/80-open-webui.yaml
+#   kubectl --context staging apply -f k8s/80-open-webui.yaml
+#
+# Lab settings: no login (WEBUI_AUTH=False) and chats kept on an emptyDir (lost on pod restart).
+# Only reachable through kubectl port-forward. Don't expose it publicly like this.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: apps
+  labels: { app: open-webui }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: open-webui }
+  template:
+    metadata:
+      labels: { app: open-webui }
+    spec:
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:v0.13.4
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            - { name: OPENAI_API_BASE_URL, value: "http://vllm-qwen.llm.svc.cluster.local:8000/v1" }
+            - { name: OPENAI_API_KEY, value: "not-needed" }       # vLLM runs without an API key
+            - { name: ENABLE_OLLAMA_API, value: "false" }         # we only use the OpenAI-compatible backend
+            - { name: WEBUI_AUTH, value: "False" }                # lab: single user, no login screen
+            - { name: RAG_EMBEDDING_MODEL_AUTO_UPDATE, value: "false" }
+          resources:
+            requests: { cpu: 250m, memory: 1Gi }
+            limits: { memory: 2Gi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60        # first start initialises its database; can take a few minutes
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /app/backend/data }
+      volumes:
+        - name: data
+          emptyDir: { sizeLimit: 5Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  namespace: apps
+  labels: { app: open-webui }
+spec:
+  selector: { app: open-webui }
+  ports:
+    - { name: http, port: 80, targetPort: http }
