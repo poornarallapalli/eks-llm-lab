@@ -1,4 +1,5 @@
-# Model catalog for the INGEST environment (dev). Staging/prod have no catalog: they only read
-# artifacts that were published here and validated in dev.
-# Publish a model: add an entry (pinned 40-char revision) -> PR -> review -> merge.
-models: []
+# Model catalog for the ingest environment (dev). Add an entry (pinned SHA) -> PR -> merge.
+models:
+  - name: llama-3.1-8b-instruct
+    repo: meta-llama/Llama-3.1-8B-Instruct
+    revision: 0e9e39f249a16976918f6564b8830bc894c89659
