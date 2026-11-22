@@ -681,6 +681,121 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
+  name: external-secrets
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions:
+  - missingkey=error
+  generators:
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://github.com/poornarallapalli/eks-llm-lab.git
+          revision: main
+          files:
+          - path: gitops/envs/*/addons.yaml
+      - clusters:
+          selector:
+            matchLabels:
+              role: spoke
+              env: '{{.path.basename}}'
+  template:
+    metadata:
+      name: external-secrets-{{.name}}
+      labels:
+        addon: external-secrets
+        env: '{{.path.basename}}'
+    spec:
+      project: default
+      destination:
+        server: '{{.server}}'
+        namespace: external-secrets
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        retry:
+          limit: 20
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m
+      source:
+        repoURL: https://charts.external-secrets.io
+        chart: external-secrets
+        targetRevision: '{{.externalSecrets}}'
+        helm:
+          releaseName: external-secrets
+          ignoreMissingValueFiles: true
+          valuesObject:
+            installCRDs: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: secrets-config
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions:
+  - missingkey=error
+  generators:
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://github.com/poornarallapalli/eks-llm-lab.git
+          revision: main
+          files:
+          - path: gitops/envs/*/addons.yaml
+      - clusters:
+          selector:
+            matchLabels:
+              role: spoke
+              env: '{{.path.basename}}'
+  template:
+    metadata:
+      name: secrets-config-{{.name}}
+      labels:
+        addon: secrets-config
+        env: '{{.path.basename}}'
+    spec:
+      project: default
+      destination:
+        server: '{{.server}}'
+        namespace: external-secrets
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 20
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m
+      source:
+        repoURL: https://github.com/poornarallapalli/eks-llm-lab.git
+        targetRevision: main
+        path: gitops/charts/secrets-config
+        helm:
+          releaseName: secrets-config
+          ignoreMissingValueFiles: true
+          valueFiles:
+          - values.yaml
+          - values-{{.path.basename}}.yaml
+          valuesObject:
+            region: '{{index .metadata.annotations "aws_region"}}'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
   name: mesh-lab
   namespace: argocd
 spec:

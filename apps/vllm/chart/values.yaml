@@ -4,7 +4,17 @@ replicas: 1
 image:
   repository: vllm/vllm-openai
   tag: v0.34.0          # <- the line you change (per env) to deploy a new image
+# Where the weights come from:
+#  - modelSource.path empty -> vLLM downloads `model` from Hugging Face at startup (bootstrap/dev only)
+#  - modelSource.path set   -> an initContainer copies that immutable, pinned artifact from the shared
+#                              model registry (published by apps/model-ingest) and vLLM loads it locally.
+#                              Production path: no HF token and no internet download in serving pods.
 model: Qwen/Qwen2.5-1.5B-Instruct
+modelRegistry: ""                 # injected per cluster by Argo CD (cluster annotation model_registry)
+modelSource:
+  path: ""                        # e.g. models/llama-3.1-8b-instruct/<40-char revision>
+  loaderImage: public.ecr.aws/aws-cli/aws-cli:latest   # production: mirror to your ECR and pin by digest
+serviceAccount: vllm              # Pod Identity: read-only on the model registry (Terraform)
 servedModelName: qwen
 maxModelLen: 4096
 gpuMemoryUtilization: "0.90"
@@ -13,6 +23,7 @@ resources:
   memory: 12Gi
   memoryLimit: 14Gi
   gpu: 1
+# Extra vLLM server flags, per environment (e.g. tool calling for chat UIs / agents)
 extraArgs: []
 mesh: true              # namespace llm is sidecar-injected; metrics scraped via :15020
 pdb:

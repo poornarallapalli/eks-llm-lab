@@ -31,6 +31,8 @@ spec:
           valueFiles:
           - values.yaml
           - ../envs/{{index .metadata.labels "env"}}/values.yaml
+          valuesObject:
+            modelRegistry: '{{index .metadata.annotations "model_registry"}}'
       destination:
         server: '{{.server}}'
         namespace: llm
@@ -40,6 +42,54 @@ spec:
           selfHeal: true
         syncOptions:
         - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 20
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: app-model-ingest
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions:
+  - missingkey=error
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          role: spoke
+  template:
+    metadata:
+      name: model-ingest-{{.name}}
+      labels:
+        app: model-ingest
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/poornarallapalli/eks-llm-lab.git
+        targetRevision: main
+        path: apps/model-ingest/chart
+        helm:
+          releaseName: model-ingest
+          ignoreMissingValueFiles: true
+          valueFiles:
+          - values.yaml
+          - ../envs/{{index .metadata.labels "env"}}/values.yaml
+          valuesObject:
+            modelRegistry: '{{index .metadata.annotations "model_registry"}}'
+            region: '{{index .metadata.annotations "aws_region"}}'
+      destination:
+        server: '{{.server}}'
+        namespace: llm
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
         retry:
           limit: 20
           backoff:

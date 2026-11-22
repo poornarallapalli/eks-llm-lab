@@ -1,0 +1,9 @@
+region: ""          # set per cluster by the ApplicationSet (cluster secret annotation)
+refreshInterval: 1h # how often ESO re-reads the secret (rotation is picked up automatically)
+# Kubernetes Secrets to materialise from AWS Secrets Manager. Values NEVER live in Git:
+# only the reference (remoteKey) does.
+secrets:
+  - name: hf-token
+    namespace: llm
+    remoteKey: llm-lab/hf-token   # Secrets Manager secret name (plain string value)
+    key: HF_TOKEN                 # key inside the Kubernetes Secret

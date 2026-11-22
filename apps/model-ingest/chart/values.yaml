@@ -1,0 +1,23 @@
+# Model catalog: which pinned model revisions exist in the registry.
+# Adding an entry here (PR -> review -> merge) is how a new model gets published. Argo CD then
+# runs one Job per entry; the Job is idempotent (skips if already published).
+models: []
+#  - name: llama-3.1-8b-instruct                # registry path: models/<name>/<revision>/
+#    repo: meta-llama/Llama-3.1-8B-Instruct
+#    revision: <40-char commit SHA>              # never a branch like "main"
+
+modelRegistry: ""   # injected per cluster by Argo CD (cluster annotation model_registry)
+region: ""          # injected per cluster by Argo CD (cluster annotation aws_region)
+hfTokenSecret: hf-token   # Kubernetes Secret created by External Secrets (only on the ingest cluster)
+serviceAccount: model-ingest   # Pod Identity: PutObject on the registry (Terraform: model_ingest_enabled)
+
+image: python:3.12-slim       # production: a prebuilt, scanned ingest image pinned by digest
+pythonPackages:               # pinned; production bakes these into the image
+  - huggingface_hub==2.4.0
+  - boto3==1.44.9
+# Files needed for serving: config, tokenizer, safetensors. Skips duplicate original/ checkpoints.
+includeSuffixes: [".json", ".safetensors", ".jinja", ".txt", ".model"]
+excludePrefixes: ["original/"]
+resources:
+  requests: { cpu: "1", memory: 2Gi, ephemeral-storage: 12Gi }
+  limits: { memory: 4Gi, ephemeral-storage: 15Gi }

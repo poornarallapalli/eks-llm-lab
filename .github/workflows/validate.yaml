@@ -5,12 +5,27 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
+  # Fails the PR if anything that looks like a credential is in the diff OR anywhere in history.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: gitleaks (pinned release binary)
+        env: { GITLEAKS_VERSION: "8.30.1" }
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz gitleaks
+          ./gitleaks git --redact --verbose --exit-code 1 .
+
   terraform:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dir: [infra/bootstrap-state, infra/envs/dev, infra/envs/staging, infra/hub]
+        dir: [infra/bootstrap-state, infra/shared, infra/envs/dev, infra/envs/staging, infra/hub]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -39,6 +54,10 @@ jobs:
               f=gitops/charts/$c/values-$env.yaml
               helm template t gitops/charts/$c $( [ -f $f ] && echo -f $f ) > /dev/null
             done
-            helm template t apps/vllm/chart -f apps/vllm/envs/$env/values.yaml > /dev/null
+            helm template t apps/vllm/chart -f apps/vllm/envs/$env/values.yaml --set modelRegistry=ci-registry > /dev/null
+            f=apps/model-ingest/envs/$env/values.yaml
+            helm template t apps/model-ingest/chart $( [ -f $f ] && echo -f $f ) --set modelRegistry=ci-registry,region=us-east-1 > /dev/null
+            f=gitops/charts/secrets-config/values-$env.yaml
+            helm template t gitops/charts/secrets-config $( [ -f $f ] && echo -f $f ) --set region=us-east-1 > /dev/null
             echo "rendered all charts for $env"
           done

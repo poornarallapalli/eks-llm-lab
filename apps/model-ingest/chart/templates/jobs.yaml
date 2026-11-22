@@ -1,0 +1,110 @@
+{{- range .Values.models }}
+{{- if ne (len .revision) 40 }}{{ fail (printf "model %s: revision must be a 40-char commit SHA, got %q" .name .revision) }}{{ end }}
+{{- if not $.Values.modelRegistry }}{{ fail "modelRegistry is empty: injected by Argo CD from the cluster annotation model_registry" }}{{ end }}
+---
+# Job name contains the revision: a new revision = a new Job; the same revision is never re-run.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingest-{{ .name }}-{{ trunc 8 .revision }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: model-ingest
+    model: {{ .name }}
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 7200
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: model-ingest
+        model: {{ .name }}
+      annotations:
+        sidecar.istio.io/inject: "false"   # batch job: HF + S3 egress only; no mesh traffic
+    spec:
+      serviceAccountName: {{ $.Values.serviceAccount }}
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: ingest
+          image: {{ $.Values.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          env:
+            - { name: MODEL_ID, value: {{ .repo | quote }} }
+            - { name: REVISION, value: {{ .revision | quote }} }
+            - { name: BUCKET, value: {{ $.Values.modelRegistry | quote }} }
+            - { name: PREFIX, value: "models/{{ .name }}/{{ .revision }}" }
+            - { name: AWS_REGION, value: {{ $.Values.region | quote }} }
+            - { name: INCLUDE_SUFFIXES, value: {{ join "," $.Values.includeSuffixes | quote }} }
+            - { name: EXCLUDE_PREFIXES, value: {{ join "," $.Values.excludePrefixes | quote }} }
+            - { name: HOME, value: /work }
+            - { name: HF_HUB_DISABLE_PROGRESS_BARS, value: "1" }
+            - { name: HF_HUB_DISABLE_TELEMETRY, value: "1" }
+            - name: HF_TOKEN                     # synced from AWS Secrets Manager by External Secrets
+              valueFrom:
+                secretKeyRef: { name: {{ $.Values.hfTokenSecret }}, key: HF_TOKEN }
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --quiet --no-cache-dir --user {{ join " " $.Values.pythonPackages }}
+              python3 - <<'PY'
+              import hashlib, json, os, datetime, boto3
+              from botocore.exceptions import ClientError
+              from huggingface_hub import HfApi, hf_hub_download
+
+              model, rev = os.environ["MODEL_ID"], os.environ["REVISION"]
+              bucket, prefix = os.environ["BUCKET"], os.environ["PREFIX"]
+              inc = tuple(os.environ["INCLUDE_SUFFIXES"].split(","))
+              exc = tuple(p for p in os.environ["EXCLUDE_PREFIXES"].split(",") if p)
+              s3 = boto3.client("s3")
+
+              # Idempotent: an artifact is published exactly once (registry objects are immutable)
+              try:
+                  s3.head_object(Bucket=bucket, Key=f"{prefix}/_COMPLETE")
+                  print(f"already published: s3://{bucket}/{prefix}/ (nothing to do)", flush=True)
+                  raise SystemExit(0)
+              except ClientError as e:
+                  if e.response["Error"]["Code"] not in ("404", "NoSuchKey", "NotFound"):
+                      raise
+
+              files = [f for f in HfApi().list_repo_files(model, revision=rev)
+                       if not f.startswith(exc) and (f.endswith(inc) or f.startswith("tokenizer"))]
+              if not any(f.endswith(".safetensors") for f in files):
+                  raise SystemExit(f"no .safetensors weights found in {model}@{rev}")
+              print(f"{model}@{rev}: {len(files)} files -> s3://{bucket}/{prefix}/", flush=True)
+
+              manifest = {"model": model, "revision": rev, "files": {},
+                          "published_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+              for f in files:
+                  # one file at a time: download -> sha256 -> upload (S3 verifies SHA-256) -> delete
+                  path = hf_hub_download(model, f, revision=rev, cache_dir="/work/cache")
+                  h = hashlib.sha256()
+                  with open(path, "rb") as fh:
+                      for chunk in iter(lambda: fh.read(8 << 20), b""):
+                          h.update(chunk)
+                  size = os.path.getsize(path)
+                  s3.upload_file(path, bucket, f"{prefix}/{f}", ExtraArgs={"ChecksumAlgorithm": "SHA256"})
+                  manifest["files"][f] = {"sha256": h.hexdigest(), "bytes": size}
+                  print(f"  {f}  {size/1e9:.2f} GB  sha256={h.hexdigest()[:16]}", flush=True)
+                  os.remove(os.path.realpath(path))
+
+              s3.put_object(Bucket=bucket, Key=f"{prefix}/MANIFEST.json", ChecksumAlgorithm="SHA256",
+                            Body=json.dumps(manifest, indent=2).encode())
+              s3.put_object(Bucket=bucket, Key=f"{prefix}/_COMPLETE", Body=b"")   # LAST: publish
+              print(f"PUBLISHED s3://{bucket}/{prefix}/", flush=True)
+              PY
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - { name: work, mountPath: /work }
+      volumes:
+        - name: work
+          emptyDir: { sizeLimit: 15Gi }
+{{- end }}

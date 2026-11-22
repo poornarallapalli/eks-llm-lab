@@ -1,0 +1,4 @@
+# Model catalog for the INGEST environment (dev). Staging/prod have no catalog: they only read
+# artifacts that were published here and validated in dev.
+# Publish a model: add an entry (pinned 40-char revision) -> PR -> review -> merge.
+models: []

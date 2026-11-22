@@ -1,0 +1,5 @@
+apiVersion: v2
+name: secrets-config
+description: External Secrets store (AWS Secrets Manager via Pod Identity) + the secrets each cluster needs
+type: application
+version: 0.1.0
