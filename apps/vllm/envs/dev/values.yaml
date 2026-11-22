@@ -1,10 +1,19 @@
-# What DEV runs. Deploy a new image: change image.tag here -> PR -> merge.
 image:
-  tag: v0.33.0
+  tag: v0.34.0
 replicas: 1
-# Tool/function calling, needed by Open WebUI and agent frameworks that send tool_choice=auto.
-# Qwen2.5 emits Hermes-style tool calls, so vLLM must parse them with the hermes parser.
+
+model: meta-llama/Llama-3.1-8B-Instruct
+modelSource:
+  path: models/llama-3.1-8b-instruct/<40-CHAR SHA>
+servedModelName: llama-3.1-8b
+maxModelLen: 16384
+gpuMemoryUtilization: "0.92"
+resources:
+  cpu: "4"
+  memory: 24Gi          # -> g6.2xlarge
+  memoryLimit: 28Gi
+  gpu: 1
 extraArgs:
   - --enable-auto-tool-choice
-  - --tool-call-parser=hermes
-maxModelLen: 32768
+  - --tool-call-parser=llama3_json
+  - --chat-template=/vllm-workspace/examples/tool_chat_template_llama3.1_json.jinja
