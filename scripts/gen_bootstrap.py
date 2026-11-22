@@ -103,6 +103,7 @@ CLUSTER = '{{index .metadata.annotations "cluster_name"}}'
 REGION = '{{index .metadata.annotations "aws_region"}}'
 AMP_WRITE = '{{index .metadata.annotations "amp_remote_write_url"}}'
 AMP_QUERY = '{{index .metadata.annotations "amp_query_url"}}'
+MODEL_REGISTRY = '{{index .metadata.annotations "model_registry"}}'
 
 KPS_REMOTE = {
     "prometheus": {"prometheusSpec": {
@@ -181,6 +182,14 @@ spokes = [
     appset("sandbox-platform", "spoke",
            [local_chart("gitops/charts/sandbox-platform", "sandbox-platform")],
            "sandboxes", ["SkipDryRunOnMissingResource=true"]),
+    # Secrets: AWS Secrets Manager -> Kubernetes Secrets (Pod Identity, read-only, prefix-scoped)
+    appset("external-secrets", "spoke",
+           [chart("https://charts.external-secrets.io", "external-secrets", "externalSecrets",
+                  "external-secrets", values_object={"installCRDs": True})],
+           "external-secrets", ["ServerSideApply=true"]),
+    appset("secrets-config", "spoke",
+           [local_chart("gitops/charts/secrets-config", "secrets-config", {"region": REGION})],
+           "external-secrets", ["SkipDryRunOnMissingResource=true"]),
     # Hands-on playground for LABS-ISTIO-CALICO.md (enabled on dev only via values-staging.yaml)
     appset("mesh-lab", "spoke",
            [local_chart("gitops/charts/mesh-lab", "mesh-lab")],
@@ -224,12 +233,39 @@ apps = [{
                 "source": {
                     "repoURL": REPO, "targetRevision": REV, "path": "apps/vllm/chart",
                     "helm": {"releaseName": "vllm", "valueFiles": [
-                        "values.yaml", '../envs/{{index .metadata.labels "env"}}/values.yaml']},
+                        "values.yaml", '../envs/{{index .metadata.labels "env"}}/values.yaml'],
+                        # GitOps Bridge: registry bucket comes from the cluster secret, not Git
+                        "valuesObject": {"modelRegistry": MODEL_REGISTRY}},
                 },
                 "destination": {"server": "{{.server}}", "namespace": "llm"},
                 "syncPolicy": {"automated": {"prune": True, "selfHeal": True},
                                "syncOptions": ["SkipDryRunOnMissingResource=true"],
                                "retry": RETRY},
+            },
+        },
+    },
+}, {
+    # Model catalog -> ingest Jobs. Only clusters with a catalog file (dev) publish models.
+    "apiVersion": "argoproj.io/v1alpha1",
+    "kind": "ApplicationSet",
+    "metadata": {"name": "app-model-ingest", "namespace": "argocd"},
+    "spec": {
+        "goTemplate": True,
+        "goTemplateOptions": ["missingkey=error"],
+        "generators": [{"clusters": {"selector": {"matchLabels": {"role": "spoke"}}}}],
+        "template": {
+            "metadata": {"name": "model-ingest-{{.name}}", "labels": {"app": "model-ingest"}},
+            "spec": {
+                "project": "default",
+                "source": {
+                    "repoURL": REPO, "targetRevision": REV, "path": "apps/model-ingest/chart",
+                    "helm": {"releaseName": "model-ingest", "ignoreMissingValueFiles": True,
+                             "valueFiles": ["values.yaml",
+                                            '../envs/{{index .metadata.labels "env"}}/values.yaml'],
+                             "valuesObject": {"modelRegistry": MODEL_REGISTRY, "region": REGION}},
+                },
+                "destination": {"server": "{{.server}}", "namespace": "llm"},
+                "syncPolicy": {"automated": {"prune": True, "selfHeal": True}, "retry": RETRY},
             },
         },
     },

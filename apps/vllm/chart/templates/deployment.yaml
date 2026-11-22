@@ -22,6 +22,34 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: /metrics
     spec:
+      serviceAccountName: {{ .Values.serviceAccount }}
+      {{- if .Values.modelSource.path }}
+      {{- if not .Values.modelRegistry }}{{ fail "modelRegistry is empty: it is injected by Argo CD from the cluster annotation model_registry" }}{{ end }}
+      initContainers:
+        # Copy the approved weights from the registry. Refuse to start on a partial/unapproved upload:
+        # the ingest job writes _COMPLETE only after every file and the manifest are uploaded.
+        - name: fetch-model
+          image: {{ .Values.modelSource.loaderImage }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              SRC="s3://{{ .Values.modelRegistry }}/{{ trimSuffix "/" .Values.modelSource.path }}"
+              aws s3 ls "$SRC/_COMPLETE" >/dev/null || { echo "ERROR: $SRC/_COMPLETE missing (not published)"; exit 1; }
+              aws s3 sync "$SRC/" /models/weights/ --no-progress --exclude "_COMPLETE"
+              echo "model ready: $(du -sh /models/weights | cut -f1) from $SRC"
+          env:
+            - { name: HOME, value: /tmp }
+          {{- if .Values.mesh }}
+          securityContext:
+            runAsUser: 1337   # Istio proxy UID: init-container traffic bypasses the not-yet-running sidecar
+          {{- end }}
+          resources:
+            requests: { cpu: 500m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - { name: models, mountPath: /models }
+      {{- end }}
       tolerations:
         - { key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }
       nodeSelector:
@@ -30,7 +58,7 @@ spec:
         - name: vllm
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           args:
-            - --model={{ .Values.model }}
+            - --model={{ if .Values.modelSource.path }}/models/weights{{ else }}{{ .Values.model }}{{ end }}
             - --served-model-name={{ .Values.servedModelName }}
             - --max-model-len={{ .Values.maxModelLen }}
             - --gpu-memory-utilization={{ .Values.gpuMemoryUtilization }}
@@ -65,5 +93,6 @@ spec:
             - { name: models, mountPath: /models }
             - { name: shm, mountPath: /dev/shm }
       volumes:
-        - { name: models, emptyDir: {} }
+        - name: models
+          emptyDir: { sizeLimit: {{ .Values.modelSource.diskLimit | default "60Gi" }} }   # weights + HF cache; node data volume must be larger
         - { name: shm, emptyDir: { medium: Memory, sizeLimit: 2Gi } }

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: model-ingest
+description: Publishes pinned Hugging Face model revisions into the shared, immutable model registry (one Job per catalog entry)
+type: application
+version: 0.1.0

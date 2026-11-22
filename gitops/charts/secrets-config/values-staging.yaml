@@ -1,0 +1,2 @@
+# Staging never ingests models, so it never receives the Hugging Face token (least privilege).
+secrets: []

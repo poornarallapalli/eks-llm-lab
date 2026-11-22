@@ -7,3 +7,4 @@ istio: 1.32.0          # istio/base, istio/istiod, istio/gateway charts
 kubePrometheusStack: 93.4.1
 kueue: 0.20.6          # OCI: registry.k8s.io/kueue/charts
 agentSandbox: v1.0.12  # git tag of kubernetes-sigs/agent-sandbox (its helm/ chart)
+externalSecrets: 2.15.0
