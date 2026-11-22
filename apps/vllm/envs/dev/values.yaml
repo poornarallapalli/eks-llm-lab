@@ -4,7 +4,7 @@ replicas: 1
 
 model: meta-llama/Llama-3.1-8B-Instruct
 modelSource:
-  path: models/llama-3.1-8b-instruct/<40-CHAR SHA>
+  path: models/llama-3.1-8b-instruct/0e9e39f249a16976918f6564b8830bc894c89659
 servedModelName: llama-3.1-8b
 maxModelLen: 16384
 gpuMemoryUtilization: "0.92"
