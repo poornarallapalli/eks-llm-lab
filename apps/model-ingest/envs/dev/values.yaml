@@ -1,5 +1,19 @@
-# Model catalog for the ingest environment (dev). Add an entry (pinned SHA) -> PR -> merge.
-models:
-  - name: llama-3.1-8b-instruct
-    repo: meta-llama/Llama-3.1-8B-Instruct
-    revision: 0e9e39f249a16976918f6564b8830bc894c89659
+image:
+  tag: v0.34.0
+replicas: 1
+
+model: meta-llama/Llama-3.1-8B-Instruct
+modelSource:
+  path: models/llama-3.1-8b-instruct/<40-CHAR SHA>
+servedModelName: llama-3.1-8b
+maxModelLen: 16384
+gpuMemoryUtilization: "0.92"
+resources:
+  cpu: "4"
+  memory: 24Gi          # -> g6.2xlarge
+  memoryLimit: 28Gi
+  gpu: 1
+extraArgs:
+  - --enable-auto-tool-choice
+  - --tool-call-parser=llama3_json
+  - --chat-template=/vllm-workspace/examples/tool_chat_template_llama3.1_json.jinja
